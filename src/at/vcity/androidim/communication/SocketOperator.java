@@ -65,9 +65,6 @@ public class SocketOperator implements ISocketOperator {
         }
     }
 
-    public SocketOperator(IAppManager appManager) {
-    }
-
 
     public String sendHttpRequest(String params) {
         URL url;

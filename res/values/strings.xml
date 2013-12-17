@@ -37,5 +37,6 @@
 	<string name="approve_selected_friends">Approve Selecteds and Discard Others</string>
 	<string name="not_connected_to_network">There is no available connected network</string>
 	<string name="message_cannot_be_sent">Message was not been able to sent</string>
+    <string name="app_id">716867304991179</string>
 
 </resources>

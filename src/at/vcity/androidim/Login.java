@@ -1,328 +1,116 @@
 package at.vcity.androidim;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.net.MalformedURLException;
-
-import at.vcity.androidim.R;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
 import android.widget.Toast;
+import at.vcity.androidim.communication.SocketOperator;
+import at.vcity.androidim.interfaces.ISocketOperator;
+import com.facebook.FacebookRequestError;
+import com.facebook.Request;
+import com.facebook.Response;
+import com.facebook.Session;
+import com.facebook.model.GraphObject;
 
-import com.facebook.android.AsyncFacebookRunner;
-import com.facebook.android.AsyncFacebookRunner.RequestListener;
-import com.facebook.android.DialogError;
-import com.facebook.android.Facebook;
-import com.facebook.android.Facebook.DialogListener;
-import com.facebook.android.FacebookError;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 
 public class Login extends Activity {
 
-    // Your Facebook APP ID
-    private static String APP_ID = "222122034628310"; // Replace with your App ID
+	// Your Facebook APP ID
+	private static String APP_ID = "716867304991179"; // Replace with your App ID
 
-    // Instance of Facebook Class
-    private Facebook facebook = new Facebook(APP_ID);
-    private AsyncFacebookRunner mAsyncRunner;
-    String FILENAME = "AndroidSSO_data";
-    private SharedPreferences mPrefs;
+	// Instance of Facebook Class
+//    String FILENAME = "AndroidSSO_data";
+	private SharedPreferences mPrefs;
 
-    // Buttons
-    Button btnFbLogin;
-    Button btnFbGetProfile;
-    Button btnPostToWall;
-    Button btnShowAccessTokens;
+	private static ISocketOperator socket_op = new SocketOperator();
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.main);
+	// Buttons
+	Button btnFbLogin, btnFbLogout;
 
-        btnFbLogin = (Button) findViewById(R.id.btn_fblogin);
-//        btnFbGetProfile = (Button) findViewById(R.id.btn_get_profile);
-//        btnPostToWall = (Button) findViewById(R.id.btn_fb_post_to_wall);
-//        btnShowAccessTokens = (Button) findViewById(R.id.btn_show_access_tokens);
-        mAsyncRunner = new AsyncFacebookRunner(facebook);
+	public void toast(String msg) {
+		Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_LONG).show();
+	}
 
-        /**
-         * Login button Click event
-         * */
-        btnFbLogin.setOnClickListener(new View.OnClickListener() {
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.main);
+//        btnFbLogin = (Button) findViewById(R.id.btn_fblogin);
+//        btnFbLogout = (Button) findViewById(R.id.btn_fblogout);
+//        Settings.addLoggingBehavior(LoggingBehavior.INCLUDE_ACCESS_TOKENS);
+		Session session = createSession();
+		if (!session.isOpened()) {
+			session.openForRead(new Session.OpenRequest(this));
+		}
+		final String requestId = "me";
+		Request fbreq = new Request(session, requestId, null, null, new Request.Callback() {
+			public void onCompleted(Response response) {
+				GraphObject graphObject = response.getGraphObject();
+				FacebookRequestError error = response.getError();
+				String s = "";
+				if (graphObject != null) {
+					if (graphObject.getProperty("id") != null) {
+						s = s + String.format("%s: %s\n", graphObject.getProperty("id"), graphObject.getProperty(
+								"name"));
+						String fb_name = "", fb_id = "", sex = "F";
+						int age = 0;
+						double lat_x = 0, long_y = 0;
+						try {
+							String params = "fb_name=" + enc(fb_name) + "&fb_id=" + fb_id +
+									"&sex=" + sex +
+									"&age=" + age +
+									"&lat_x=" + lat_x +
+									"&long_y=" + long_y;
+							String res = socket_op.sendHttpRequest(params);
+							//TODO: from res build search_n_res_page_i
+							Intent search_n_res_page_i = new Intent();
+							/**
+							 * 1.create user if not found on db
+							 * 2.lsist of [age, gender, name, status]
+							 */
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					} else {
+						s = s + String.format("%s: <no such id>\n", requestId);
+					}
+				} else if (error != null) {
+					s = s + String.format("Error: %s", error.getErrorMessage());
+				}
+				final String s2 = s;
+				Log.d("graph obj", graphObject.getInnerJSONObject().toString());
+				runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						toast(s2);
+					}
+				});
+			}
+		});
+		fbreq.executeAsync();
+	}
 
-            @Override
-            public void onClick(View v) {
-                Log.d("Image Button", "button Clicked");
-                loginToFacebook();
-                JSONObject res = getProfileInformation();
-                Log.i("", ""+res);
-            }
-        });
+	public static String enc(String msg) throws UnsupportedEncodingException {
+		return URLEncoder.encode(msg, "UTF-8");
+	}
 
-        /**
-         * Getting facebook Profile info
-         * */
-        btnFbGetProfile.setOnClickListener(new View.OnClickListener() {
+	private Session createSession() {
+		Session activeSession = Session.getActiveSession();
+		if (activeSession == null || activeSession.getState().isClosed()) {
+			activeSession = new Session.Builder(this).setApplicationId(APP_ID).build();
+			Session.setActiveSession(activeSession);
+		}
+		return activeSession;
+	}
 
-            @Override
-            public void onClick(View v) {
-                getProfileInformation();
-            }
-        });
-
-        /**
-         * Posting to Facebook Wall
-         * */
-        btnPostToWall.setOnClickListener(new View.OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                postToWall();
-            }
-        });
-
-        /**
-         * Showing Access Tokens
-         * */
-        btnShowAccessTokens.setOnClickListener(new View.OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                showAccessTokens();
-            }
-        });
-
-    }
-
-    /**
-     * Function to login into facebook
-     */
-    public void loginToFacebook() {
-        mPrefs = getPreferences(MODE_PRIVATE);
-        String access_token = mPrefs.getString("access_token", null);
-        long expires = mPrefs.getLong("access_expires", 0);
-
-        if (access_token != null) {
-            facebook.setAccessToken(access_token);
-
-//            btnFbLogin.setVisibility(View.INVISIBLE);
-//
-//            // Making get profile button visible
-//            btnFbGetProfile.setVisibility(View.VISIBLE);
-//
-//            // Making post to wall visible
-//            btnPostToWall.setVisibility(View.VISIBLE);
-//
-//            // Making show access tokens button visible
-//            btnShowAccessTokens.setVisibility(View.VISIBLE);
-
-            Log.d("FB Sessions", "" + facebook.isSessionValid());
-        }
-
-        if (expires != 0) {
-            facebook.setAccessExpires(expires);
-        }
-
-        if (!facebook.isSessionValid()) {
-            facebook.authorize(this,
-                    new String[]{"email", "publish_stream"},
-                    new DialogListener() {
-
-                        @Override
-                        public void onCancel() {
-                            // Function to handle cancel event
-                        }
-
-                        @Override
-                        public void onComplete(Bundle values) {
-                            // Function to handle complete event
-                            // Edit Preferences and update facebook acess_token
-                            SharedPreferences.Editor editor = mPrefs.edit();
-                            editor.putString("access_token",
-                                    facebook.getAccessToken());
-                            editor.putLong("access_expires",
-                                    facebook.getAccessExpires());
-                            editor.commit();
-
-                            // Making Login button invisible
-                            btnFbLogin.setVisibility(View.INVISIBLE);
-
-//                            // Making logout Button visible
-//                            btnFbGetProfile.setVisibility(View.VISIBLE);
-//
-//                            // Making post to wall visible
-//                            btnPostToWall.setVisibility(View.VISIBLE);
-//
-//                            // Making show access tokens button visible
-//                            btnShowAccessTokens.setVisibility(View.VISIBLE);
-                        }
-
-                        @Override
-                        public void onError(DialogError error) {
-                            // Function to handle error
-
-                        }
-
-                        @Override
-                        public void onFacebookError(FacebookError fberror) {
-                            // Function to handle Facebook errors
-
-                        }
-
-                    });
-        }
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        facebook.authorizeCallback(requestCode, resultCode, data);
-    }
-
-
-    /**
-     * Get Profile information by making request to Facebook Graph API
-     */
-    public JSONObject getProfileInformation() {
-        final JSONObject[] dummy = new JSONObject[1] ;
-        mAsyncRunner.request("me", new RequestListener() {
-            @Override
-            public void onComplete(String response, Object state) {
-                Log.d("Profile", response);
-                String json = response;
-                try {
-                    // Facebook Profile JSON data
-                    JSONObject profile = new JSONObject(json);
-                    dummy[0] = profile;
-
-                    // getting name of the user
-                    final String name = profile.getString("name");
-
-                    // getting email of the user
-                    final String email = profile.getString("email");
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Name: " + name + "\nEmail: " + email, Toast.LENGTH_LONG).show();
-                        }
-
-                    });
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            @Override
-            public void onIOException(IOException e, Object state) {
-            }
-
-            @Override
-            public void onFileNotFoundException(FileNotFoundException e,
-                                                Object state) {
-            }
-
-            @Override
-            public void onMalformedURLException(MalformedURLException e,
-                                                Object state) {
-            }
-
-            @Override
-            public void onFacebookError(FacebookError e, Object state) {
-            }
-        });
-        return dummy[0];
-    }
-
-    /**
-     * Function to post to facebook wall
-     */
-    public void postToWall() {
-        // post on user's wall.
-        facebook.dialog(this, "feed", new DialogListener() {
-
-            @Override
-            public void onFacebookError(FacebookError e) {
-            }
-
-            @Override
-            public void onError(DialogError e) {
-            }
-
-            @Override
-            public void onComplete(Bundle values) {
-            }
-
-            @Override
-            public void onCancel() {
-            }
-        });
-
-    }
-
-    /**
-     * Function to show Access Tokens
-     */
-    public void showAccessTokens() {
-        String access_token = facebook.getAccessToken();
-
-        Toast.makeText(getApplicationContext(),
-                "Access Token: " + access_token, Toast.LENGTH_LONG).show();
-    }
-
-    /**
-     * Function to Logout user from Facebook
-     */
-    public void logoutFromFacebook() {
-        mAsyncRunner.logout(this, new RequestListener() {
-            @Override
-            public void onComplete(String response, Object state) {
-                Log.d("Logout from Facebook", response);
-                if (Boolean.parseBoolean(response) == true) {
-                    runOnUiThread(new Runnable() {
-
-                        @Override
-                        public void run() {
-                            // make Login button visible
-                            btnFbLogin.setVisibility(View.VISIBLE);
-
-                            // making all remaining buttons invisible
-                            btnFbGetProfile.setVisibility(View.INVISIBLE);
-                            btnPostToWall.setVisibility(View.INVISIBLE);
-                            btnShowAccessTokens.setVisibility(View.INVISIBLE);
-                        }
-
-                    });
-
-                }
-            }
-
-            @Override
-            public void onIOException(IOException e, Object state) {
-            }
-
-            @Override
-            public void onFileNotFoundException(FileNotFoundException e,
-                                                Object state) {
-            }
-
-            @Override
-            public void onMalformedURLException(MalformedURLException e,
-                                                Object state) {
-            }
-
-            @Override
-            public void onFacebookError(FacebookError e, Object state) {
-            }
-        });
-    }
-
+	@Override
+	public void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		Session.getActiveSession().onActivityResult(this, requestCode, resultCode, data);
+	}
 }
